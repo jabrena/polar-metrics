@@ -2997,11 +2997,10 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/location'
-        xml:
-          name: location
       description: List of route points/locations of the exercise.
       xml:
         name: route
+        wrapped: true
     transaction-location:
       type: object
       properties:
