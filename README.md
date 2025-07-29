@@ -30,6 +30,6 @@ export AUTH_CODE="www"
 jwebserver -p 8005 -d "$(pwd)/docs/"
 ```
 
-## Further information
+## Further information
 
 - https://www.polar.com/accesslink-api
