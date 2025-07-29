@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polar Heart Rate Analytics Dashboard</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .chart-container:hover {
+            transform: translateY(-5px);
+        }
+
+        .chart-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #4a5568;
+            text-align: center;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+
+
+
+
+        .axis {
+            font-size: 12px;
+        }
+
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: #000;
+            shape-rendering: crispEdges;
+        }
+
+        .line {
+            fill: none;
+            stroke-width: 2px;
+        }
+
+        .area {
+            opacity: 0.6;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 5px;
+            pointer-events: none;
+            font-size: 12px;
+            z-index: 1000;
+        }
+
+        .loading {
+            text-align: center;
+            color: white;
+            font-size: 1.5rem;
+            margin: 50px 0;
+        }
+
+        .time-controls {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .time-input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .time-controls label {
+            font-weight: 500;
+            color: #4a5568;
+        }
+
+        .time-controls input[type="time"] {
+            padding: 8px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            transition: border-color 0.2s;
+        }
+
+        .time-controls input[type="time"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .time-controls button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .time-controls button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .sample-count {
+            font-size: 12px;
+            color: #718096;
+            font-style: italic;
+        }
+
+        .box-plot:hover {
+            opacity: 0.8;
+        }
+
+        .outlier {
+            transition: r 0.2s;
+        }
+
+        .outlier:hover {
+            r: 3;
+        }
+
+
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .time-controls {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>❤️ Polar Heart Rate Analytics</h1>
+            <p class="subtitle">Comprehensive heart rate monitoring dashboard</p>
+        </header>
+
+        <div class="loading" id="loading">Loading heart rate data...</div>
+
+        <div id="dashboard" style="display: none;">
+            <div class="dashboard">
+                <div class="chart-container full-width">
+                    <div class="chart-title">24-Hour Heart Rate Box Plot Distribution</div>
+                    <div id="boxPlotChart"></div>
+                </div>
+                
+                <div class="chart-container full-width">
+                    <div class="chart-title">Custom Time Range Heart Rate Distribution</div>
+                    <div class="time-controls">
+                        <div class="time-input-group">
+                            <label for="startTime">From: </label>
+                            <input type="time" id="startTime" value="00:00">
+                        </div>
+                        <div class="time-input-group">
+                            <label for="endTime">To: </label>
+                            <input type="time" id="endTime" value="23:59">
+                        </div>
+                        <button onclick="updateCustomHistogram()">Update Chart</button>
+                        <span class="sample-count" id="sampleCount"></span>
+                    </div>
+                    <div id="customHistogramChart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+        let processedData = [];
+        const tooltip = d3.select("body").append("div")
+            .attr("class", "tooltip")
+            .style("opacity", 0);
+
+        // Discover and load all JSON files from the folder
+        async function loadAllData() {
+            // Try to load files with different date patterns to discover available files
+            const promises = [];
+            const potentialDates = [];
+            
+            // Generate potential dates (broader range to catch all files)
+            const start = new Date('2025-06-01');
+            const end = new Date('2025-08-31');
+            
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                potentialDates.push(d.toISOString().split('T')[0]);
+            }
+            
+            // Try to load each potential file
+            for (const date of potentialDates) {
+                promises.push(
+                    fetch(`continuous-heart-rate/${date}.json`)
+                        .then(response => response.ok ? response.json() : null)
+                        .catch(() => null)
+                );
+            }
+            
+            const results = await Promise.all(promises);
+            allData = results.filter(data => data !== null);
+            
+            if (allData.length === 0) {
+                document.getElementById('loading').innerHTML = 'No heart rate data files found in the continuous-heart-rate folder.';
+                return;
+            }
+            
+            processData();
+            createVisualizations();
+            
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+        }
+
+        // Process raw data into useful formats
+        function processData() {
+            processedData = allData.map(dayData => {
+                const samples = dayData.heart_rate_samples.map(sample => ({
+                    heartRate: sample.heart_rate,
+                    time: new Date(`${dayData.date}T${sample.sample_time}`),
+                    date: dayData.date
+                }));
+                
+                const heartRates = samples.map(s => s.heartRate);
+                const avg = d3.mean(heartRates);
+                const min = d3.min(heartRates);
+                const max = d3.max(heartRates);
+                
+                return {
+                    date: dayData.date,
+                    samples: samples,
+                    stats: {
+                        avg: Math.round(avg),
+                        min: min,
+                        max: max,
+                        range: max - min,
+                        count: samples.length
+                    }
+                };
+            });
+        }
+
+
+
+
+
+
+
+        // Create 24-hour box plot chart
+        function createBoxPlotChart() {
+            const container = d3.select("#boxPlotChart");
+            const width = Math.min(1200, window.innerWidth - 100);
+            const height = 500;
+            const margin = { top: 20, right: 30, bottom: 60, left: 60 };
+            
+            const svg = container.append("svg")
+                .attr("width", width)
+                .attr("height", height);
+                
+            const chartWidth = width - margin.left - margin.right;
+            const chartHeight = height - margin.top - margin.bottom;
+            
+            const g = svg.append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+            // Group heart rate data by hour
+            const allSamples = processedData.flatMap(d => d.samples);
+            const hourlyData = {};
+            
+            // Initialize all hours (0-23)
+            for (let h = 0; h < 24; h++) {
+                hourlyData[h] = [];
+            }
+            
+            // Group samples by hour
+            allSamples.forEach(sample => {
+                const hour = sample.time.getHours();
+                hourlyData[hour].push(sample.heartRate);
+            });
+            
+            // Calculate box plot statistics for each hour
+            const boxPlotData = [];
+            for (let hour = 0; hour < 24; hour++) {
+                const values = hourlyData[hour].sort((a, b) => a - b);
+                
+                if (values.length > 0) {
+                    const q1 = d3.quantile(values, 0.25);
+                    const median = d3.quantile(values, 0.5);
+                    const q3 = d3.quantile(values, 0.75);
+                    const iqr = q3 - q1;
+                    const min = Math.max(d3.min(values), q1 - 1.5 * iqr);
+                    const max = Math.min(d3.max(values), q3 + 1.5 * iqr);
+                    
+                    // Find outliers
+                    const outliers = values.filter(v => v < min || v > max);
+                    
+                    boxPlotData.push({
+                        hour: hour,
+                        count: values.length,
+                        min: min,
+                        q1: q1,
+                        median: median,
+                        q3: q3,
+                        max: max,
+                        outliers: outliers
+                    });
+                } else {
+                    boxPlotData.push({
+                        hour: hour,
+                        count: 0,
+                        min: null,
+                        q1: null,
+                        median: null,
+                        q3: null,
+                        max: null,
+                        outliers: []
+                    });
+                }
+            }
+            
+            // Create scales
+            const xScale = d3.scaleBand()
+                .domain(d3.range(24))
+                .range([0, chartWidth])
+                .padding(0.1);
+                
+            const allValues = allSamples.map(s => s.heartRate);
+            const yScale = d3.scaleLinear()
+                .domain(d3.extent(allValues))
+                .nice()
+                .range([chartHeight, 0]);
+            
+            // Add axes
+            g.append("g")
+                .attr("class", "axis")
+                .attr("transform", `translate(0,${chartHeight})`)
+                .call(d3.axisBottom(xScale).tickFormat(d => d.toString().padStart(2, '0') + ':00'))
+                .selectAll("text")
+                .style("text-anchor", "end")
+                .attr("dx", "-.8em")
+                .attr("dy", ".15em")
+                .attr("transform", "rotate(-45)");
+                
+            g.append("g")
+                .attr("class", "axis")
+                .call(d3.axisLeft(yScale));
+                
+            // Add axis labels
+            g.append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", -40)
+                .attr("x", -chartHeight / 2)
+                .attr("fill", "#000")
+                .style("text-anchor", "middle")
+                .style("font-size", "12px")
+                .text("Heart Rate (BPM)");
+                
+            g.append("text")
+                .attr("x", chartWidth / 2)
+                .attr("y", chartHeight + 50)
+                .attr("fill", "#000")
+                .style("text-anchor", "middle")
+                .style("font-size", "12px")
+                .text("Hour of Day");
+            
+            // Create box plots
+            const boxWidth = xScale.bandwidth() * 0.6;
+            
+            boxPlotData.forEach(d => {
+                if (d.count === 0) return;
+                
+                const x = xScale(d.hour) + xScale.bandwidth() / 2;
+                
+                // Box plot group
+                const boxGroup = g.append("g")
+                    .attr("class", "box-plot")
+                    .attr("transform", `translate(${x}, 0)`);
+                
+                // Whiskers
+                boxGroup.append("line")
+                    .attr("x1", 0)
+                    .attr("x2", 0)
+                    .attr("y1", yScale(d.min))
+                    .attr("y2", yScale(d.q1))
+                    .attr("stroke", "#333")
+                    .attr("stroke-width", 1);
+                    
+                boxGroup.append("line")
+                    .attr("x1", 0)
+                    .attr("x2", 0)
+                    .attr("y1", yScale(d.q3))
+                    .attr("y2", yScale(d.max))
+                    .attr("stroke", "#333")
+                    .attr("stroke-width", 1);
+                
+                // Whisker caps
+                boxGroup.append("line")
+                    .attr("x1", -boxWidth/4)
+                    .attr("x2", boxWidth/4)
+                    .attr("y1", yScale(d.min))
+                    .attr("y2", yScale(d.min))
+                    .attr("stroke", "#333")
+                    .attr("stroke-width", 1);
+                    
+                boxGroup.append("line")
+                    .attr("x1", -boxWidth/4)
+                    .attr("x2", boxWidth/4)
+                    .attr("y1", yScale(d.max))
+                    .attr("y2", yScale(d.max))
+                    .attr("stroke", "#333")
+                    .attr("stroke-width", 1);
+                
+                // Box
+                boxGroup.append("rect")
+                    .attr("x", -boxWidth/2)
+                    .attr("y", yScale(d.q3))
+                    .attr("width", boxWidth)
+                    .attr("height", yScale(d.q1) - yScale(d.q3))
+                    .attr("fill", "#667eea")
+                    .attr("fill-opacity", 0.7)
+                    .attr("stroke", "#333")
+                    .attr("stroke-width", 1);
+                
+                // Median line
+                boxGroup.append("line")
+                    .attr("x1", -boxWidth/2)
+                    .attr("x2", boxWidth/2)
+                    .attr("y1", yScale(d.median))
+                    .attr("y2", yScale(d.median))
+                    .attr("stroke", "#e53e3e")
+                    .attr("stroke-width", 2);
+                
+                // Outliers
+                boxGroup.selectAll(".outlier")
+                    .data(d.outliers)
+                    .enter()
+                    .append("circle")
+                    .attr("class", "outlier")
+                    .attr("cx", () => (Math.random() - 0.5) * boxWidth * 0.5)
+                    .attr("cy", outlier => yScale(outlier))
+                    .attr("r", 2)
+                    .attr("fill", "#e53e3e")
+                    .attr("fill-opacity", 0.6);
+                
+                // Add invisible overlay for hover
+                boxGroup.append("rect")
+                    .attr("x", -boxWidth/2)
+                    .attr("y", yScale(d.max))
+                    .attr("width", boxWidth)
+                    .attr("height", yScale(d.min) - yScale(d.max))
+                    .attr("fill", "transparent")
+                    .on("mouseover", function(event) {
+                        tooltip.transition().duration(200).style("opacity", .9);
+                        tooltip.html(`
+                            <strong>Hour: ${d.hour.toString().padStart(2, '0')}:00</strong><br/>
+                            Samples: ${d.count}<br/>
+                            Min: ${Math.round(d.min)} BPM<br/>
+                            Q1: ${Math.round(d.q1)} BPM<br/>
+                            Median: ${Math.round(d.median)} BPM<br/>
+                            Q3: ${Math.round(d.q3)} BPM<br/>
+                            Max: ${Math.round(d.max)} BPM<br/>
+                            Outliers: ${d.outliers.length}
+                        `)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function() {
+                        tooltip.transition().duration(500).style("opacity", 0);
+                    });
+            });
+            
+            // Add title with summary
+            const totalSamples = allSamples.length;
+            g.append("text")
+                .attr("x", 10)
+                .attr("y", 15)
+                .text(`Total samples: ${totalSamples.toLocaleString()} | Red line = Median | Box = Q1-Q3 | Whiskers = Min-Max range`)
+                .style("font-size", "11px")
+                .style("fill", "#4a5568")
+                .style("font-weight", "500");
+        }
+
+        // Create custom histogram chart
+        function createCustomHistogramChart() {
+            // Initialize with default time range (00:00 to 23:59)
+            updateCustomHistogram();
+        }
+
+        // Function to convert time string (HH:MM) to minutes since midnight
+        function timeToMinutes(timeString) {
+            const [hours, minutes] = timeString.split(':').map(Number);
+            return hours * 60 + minutes;
+        }
+
+        // Function to update the custom histogram based on selected time range
+        function updateCustomHistogram() {
+            const startTime = document.getElementById('startTime').value;
+            const endTime = document.getElementById('endTime').value;
+            
+            const startMinutes = timeToMinutes(startTime);
+            const endMinutes = timeToMinutes(endTime);
+            
+            // Clear existing chart
+            d3.select("#customHistogramChart").selectAll("*").remove();
+            
+            const container = d3.select("#customHistogramChart");
+            const width = 800;
+            const height = 400;
+            const margin = { top: 20, right: 30, bottom: 40, left: 50 };
+            
+            const svg = container.append("svg")
+                .attr("width", width)
+                .attr("height", height);
+                
+            const chartWidth = width - margin.left - margin.right;
+            const chartHeight = height - margin.top - margin.bottom;
+            
+            const g = svg.append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+            // Filter heart rate data by selected time range
+            const allSamples = processedData.flatMap(d => d.samples);
+            const timeFilteredSamples = allSamples.filter(sample => {
+                const hour = sample.time.getHours();
+                const minutes = sample.time.getMinutes();
+                const sampleMinutes = hour * 60 + minutes;
+                
+                if (startMinutes <= endMinutes) {
+                    // Normal case: start time is before end time
+                    return sampleMinutes >= startMinutes && sampleMinutes <= endMinutes;
+                } else {
+                    // Overnight case: start time is after end time (crosses midnight)
+                    return sampleMinutes >= startMinutes || sampleMinutes <= endMinutes;
+                }
+            });
+            
+            const heartRates = timeFilteredSamples.map(s => s.heartRate);
+            
+            // Update sample count display
+            document.getElementById('sampleCount').textContent = `(${heartRates.length.toLocaleString()} samples)`;
+            
+            if (heartRates.length === 0) {
+                g.append("text")
+                    .attr("x", chartWidth / 2)
+                    .attr("y", chartHeight / 2)
+                    .attr("text-anchor", "middle")
+                    .text("No data found for the selected time range")
+                    .style("font-size", "16px")
+                    .style("fill", "#666");
+                return;
+            }
+            
+            const bins = d3.histogram()
+                .domain(d3.extent(heartRates))
+                .thresholds(25)
+                (heartRates);
+            
+            const xScale = d3.scaleLinear()
+                .domain(d3.extent(bins, d => d.x0))
+                .range([0, chartWidth]);
+                
+            const yScale = d3.scaleLinear()
+                .domain([0, d3.max(bins, d => d.length)])
+                .range([chartHeight, 0]);
+            
+            // Add axes
+            g.append("g")
+                .attr("class", "axis")
+                .attr("transform", `translate(0,${chartHeight})`)
+                .call(d3.axisBottom(xScale).tickFormat(d => Math.round(d)))
+                .append("text")
+                .attr("x", chartWidth / 2)
+                .attr("y", 35)
+                .attr("fill", "#000")
+                .style("text-anchor", "middle")
+                .text("Heart Rate (BPM)");
+                
+            g.append("g")
+                .attr("class", "axis")
+                .call(d3.axisLeft(yScale))
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", -35)
+                .attr("x", -chartHeight / 2)
+                .attr("fill", "#000")
+                .style("text-anchor", "middle")
+                .text("Frequency");
+            
+            // Add bars with gradient color based on heart rate
+            const colorScale = d3.scaleSequential(d3.interpolateRdYlBu)
+                .domain(d3.extent(bins, d => (d.x0 + d.x1) / 2));
+            
+            g.selectAll(".bar")
+                .data(bins)
+                .enter().append("rect")
+                .attr("class", "bar")
+                .attr("x", d => xScale(d.x0))
+                .attr("width", d => Math.max(0, xScale(d.x1) - xScale(d.x0) - 1))
+                .attr("y", d => yScale(d.length))
+                .attr("height", d => chartHeight - yScale(d.length))
+                .style("fill", d => colorScale((d.x0 + d.x1) / 2))
+                .style("opacity", 0.8)
+                .style("stroke", "#fff")
+                .style("stroke-width", 1)
+                .on("mouseover", function(event, d) {
+                    d3.select(this).style("opacity", 1);
+                    tooltip.transition().duration(200).style("opacity", .9);
+                    tooltip.html(`Time Range: ${startTime} - ${endTime}<br/>Heart Rate: ${Math.round(d.x0)}-${Math.round(d.x1)} BPM<br/>Count: ${d.length}<br/>Percentage: ${((d.length / heartRates.length) * 100).toFixed(1)}%`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 28) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this).style("opacity", 0.8);
+                    tooltip.transition().duration(500).style("opacity", 0);
+                });
+            
+            // Add summary statistics
+            const avgHR = Math.round(d3.mean(heartRates));
+            const minHR = d3.min(heartRates);
+            const maxHR = d3.max(heartRates);
+            const medianHR = Math.round(d3.median(heartRates));
+            
+            g.append("text")
+                .attr("x", 10)
+                .attr("y", 20)
+                .text(`Average: ${avgHR} BPM | Median: ${medianHR} BPM | Range: ${minHR}-${maxHR} BPM`)
+                .style("font-size", "12px")
+                .style("fill", "#4a5568")
+                .style("font-weight", "500");
+        }
+
+
+
+
+
+        // Create all visualizations
+        function createVisualizations() {
+            createBoxPlotChart();
+            createCustomHistogramChart();
+        }
+
+        // Initialize the dashboard
+        loadAllData();
+
+        // Handle window resize for responsive charts
+        window.addEventListener('resize', function() {
+            // Debounce resize events
+            clearTimeout(window.resizeTimeout);
+            window.resizeTimeout = setTimeout(function() {
+                // Clear and recreate box plot chart
+                d3.select("#boxPlotChart").selectAll("*").remove();
+                createBoxPlotChart();
+            }, 250);
+        });
+    </script>
+</body>
+</html> 
